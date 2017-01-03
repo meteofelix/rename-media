@@ -6,6 +6,7 @@ import getopt
 import logging
 import subprocess
 import shlex
+import time
 from collections import deque
 
 def checkdir(path):
@@ -76,11 +77,21 @@ def setFileMode(filename, fileMode):
 
 def setModifyDate(filename, creationTimestamp):
     """Set modify date of file"""
-    pass
+    timeStampSeconds = int(time.mktime(time.strptime(str(creationTimestamp), "%Y%m%d%H%M%S")))
+    os.utime(filename, (timeStampSeconds, timeStampSeconds))
 
-def moveFile(filename, mimeType, dstimgdir, dstviddir):
-    """Move file to destination directory"""
-    pass
+def moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir):
+    """Rename file and move to destination directory"""
+    if mimeType == 'image/jpeg; charset=binary':
+        fileExtension = 'jpg'
+        dstDirectory = dstimgdir
+    elif mimeType == 'video':
+        fileExtension = 'vid'
+        dstDirectory = dstviddir
+    else:
+        return(1)
+    newFilename = dstDirectory + dateString + '_' + cameraModel + '.' + fileExtension
+    os.rename(filename, newFilename)
 
 def main(argv):
     """Main entry point for the script."""
@@ -131,12 +142,11 @@ def main(argv):
             if mimeType == 'image/jpeg; charset=binary':
                 rotateAction = rotateImage(filename)
                 logging.info(rotateAction)
-            renameFile(filename, dateString, mimeType, cameraModel)
+            #renameFile(filename, dateString, mimeType, cameraModel)
             setFileMode(filename, 0o660)
-            setModifyDateResult = setModifyDate(filename, creationTimestamp)
-            logging.info(setModifyDateResult)
-            moveFileResult = moveFile(filename, mimeType, dstimgdir, dstviddir)
-            logging.info(moveFileResult)
+            setModifyDate(filename, creationTimestamp)
+            moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
+            #logging.info(moveFileResult)
       except IndexError:
         break
 
