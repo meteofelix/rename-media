@@ -31,11 +31,16 @@ def getMimeType(filename):
     returnValue = subprocess.check_output(args, universal_newlines=True)
     mimeType = returnValue.rstrip()
     #TODO: valid return values should be like: jpeg, x-msvideo, quicktime, mp4, 3gpp (video/...; charset=binary)
-    return(mimeType)
+    if 'jpeg' in mimeType:
+        return('jpeg')
+    elif 'quicktime' in mimeType:
+        return('quicktime')
+    else:
+        sys.exit(2)
 
 def getCameraModel(filename, mimeType):
     """Get camera model from file exif data."""
-    if mimeType == 'image/jpeg; charset=binary':
+    if mimeType == 'jpeg':
         cmd = 'exiftool -s3 -Model ' + filename
         args = shlex.split(cmd)
         returnValue = subprocess.check_output(args, universal_newlines=True)
@@ -44,7 +49,7 @@ def getCameraModel(filename, mimeType):
     else:
         pass
 
-def getCreationDate(filename, mimeType, cameraModel):
+def getCreationDate(filename, mimeType):
     """Get unix timestamp creation date."""
     cmd = 'exiftool -s3 -CreateDate ' + filename
     args = shlex.split(cmd)
@@ -76,15 +81,21 @@ def setModifyDate(filename, creationTimestamp):
 
 def moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir):
     """Rename file and move to destination directory"""
-    if mimeType == 'image/jpeg; charset=binary':
+    if mimeType == 'jpeg':
         fileExtension = 'jpg'
         dstDirectory = dstimgdir
-    elif mimeType == 'video':
-        fileExtension = 'vid'
+    elif mimeType == 'quicktime':
+        fileExtension = 'mov'
         dstDirectory = dstviddir
     else:
         return(1)
-    newFilename = dstDirectory + dateString + '_' + cameraModel + '.' + fileExtension
+
+    if cameraModel:
+        cameraModelString = '_' + cameraModel
+    else:
+        cameraModelString = ''
+
+    newFilename = dstDirectory + dateString + cameraModelString + '.' + fileExtension
     os.rename(filename, newFilename)
 
 def main(argv):
@@ -122,24 +133,37 @@ def main(argv):
     while True:
       try:
         filename = filequeue.popleft()
+        print('Processing ' + filename + ': ', end="")
+        print('mimeType: ', end="")
         mimeType = getMimeType(filename)
+        print(mimeType, end="")
         logging.info(mimeType)
-        if mimeType == 'image/jpeg; charset=binary':
+        print('created: ', end="")
+        creationTimestamp = getCreationDate(filename, mimeType)
+        print(creationTimestamp, end="")
+        logging.info(creationTimestamp)
+        # we don't need the 1st character
+        dateString = baseN(creationTimestamp,26)[1:]
+        logging.info(dateString)
+        # for images only
+        cameraModel = ''
+        if mimeType == 'jpeg':
+            print('cameraModel: ', end="")
             cameraModel = getCameraModel(filename, mimeType)
+            print(cameraModel, end="")
             logging.info(cameraModel)
-            creationTimestamp = getCreationDate(filename, mimeType, cameraModel)
-            logging.info(creationTimestamp)
-            # we don't need the 1st character
-            dateString = baseN(creationTimestamp,26)[1:]
-            logging.info(dateString)
-            # rotate images only
-            if mimeType == 'image/jpeg; charset=binary':
-                rotateAction = rotateImage(filename)
-                logging.info(rotateAction)
-            setFileMode(filename, 0o660)
-            setModifyDate(filename, creationTimestamp)
-            moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
-            #logging.info(moveFileResult)
+            print('rotating: ', end="")
+            rotateAction = rotateImage(filename)
+            logging.info(rotateAction)
+        
+        print('setPermissions. ', end="")
+        setFileMode(filename, 0o660)
+        print('setTime. ', end="")
+        setModifyDate(filename, creationTimestamp)
+        print('moveRename. ', end="")
+        moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
+        print('OK')
+        #logging.info(moveFileResult)
       except IndexError:
         break
 
