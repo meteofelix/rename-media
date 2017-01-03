@@ -9,6 +9,10 @@ import shlex
 import time
 from collections import deque
 
+# TODO: check if user has root permissions
+# TODO: don't overwrite target
+# TODO: check necessary binaries
+
 def checkdir(path):
     """Check if string is existing path."""
     try:
@@ -26,6 +30,7 @@ def getMimeType(filename):
     args = shlex.split(cmd)
     returnValue = subprocess.check_output(args, universal_newlines=True)
     mimeType = returnValue.rstrip()
+    #TODO: valid return values should be like: jpeg, x-msvideo, quicktime, mp4, 3gpp (video/...; charset=binary)
     return(mimeType)
 
 def getCameraModel(filename, mimeType):
@@ -45,7 +50,6 @@ def getCreationDate(filename, mimeType, cameraModel):
     args = shlex.split(cmd)
     returnValue = subprocess.check_output(args, universal_newlines=True)
     createDate = returnValue.rstrip()
-    #return(time.mktime(datetime.datetime.strptime(createDate, "%Y:%m:%d %H:%M:%S").timetuple()))
     createDate = createDate.replace(" ","")
     return(int(createDate.replace(":","")))
 
@@ -60,16 +64,6 @@ def rotateImage(filename):
     autorotResult = returnValue.rstrip()
     return(autorotResult)
 
-def renameFile(filename, dateString, mimeType, cameraModel):
-    """Rename file"""
-    if mimeType == 'image/jpeg; charset=binary':
-        fileExtension = 'jpg'
-    elif mimeType == 'video':
-        fileExtension = 'vid'
-    else:
-        return(1)
-    newFilename = dateString + '_' + cameraModel + '.' + fileExtension
-    os.rename(filename, newFilename)
 
 def setFileMode(filename, fileMode):
     """Set filemode"""
@@ -142,29 +136,12 @@ def main(argv):
             if mimeType == 'image/jpeg; charset=binary':
                 rotateAction = rotateImage(filename)
                 logging.info(rotateAction)
-            #renameFile(filename, dateString, mimeType, cameraModel)
             setFileMode(filename, 0o660)
             setModifyDate(filename, creationTimestamp)
             moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
             #logging.info(moveFileResult)
       except IndexError:
         break
-
-# check, ob root rechte
-# eine funktion getCreationDate, die unabhaengig vom typ das erstellungsdatum ermittelt
-# eine funktion fuer umrechnung in base24
-# fuer jede datei in srcdir
-#  pruefe dateityp
-#   bild
-#    erstellungsdatum
-#    kameramodell
-#    drehen
-#    umbenennen+verschieben - ziel nicht ueberschreiben - abbruch
-#   video
-#    erstellungsdatum lesen
-#    umbenennen+verschieben - ziel nicht ueberschreiben - abbruch
-#   other
-#    ignore
 
 if __name__ == '__main__':
     main(sys.argv[1:])
