@@ -30,30 +30,40 @@ def getMimeType(filename):
     args = shlex.split(cmd)
     returnValue = subprocess.check_output(args, universal_newlines=True)
     mimeType = returnValue.rstrip()
-    #TODO: valid return values should be like: jpeg, x-msvideo, quicktime, mp4, 3gpp (video/...; charset=binary)
     if 'jpeg' in mimeType:
         return('jpeg')
     elif 'quicktime' in mimeType:
         return('quicktime')
+    elif 'mp4' in mimeType:
+        return('mp4')
+    elif 'x-msvideo' in mimeType:
+        return('avi')
     else:
+        print('Unknown media format.')
         sys.exit(2)
 
 def getCameraModel(filename, mimeType):
     """Get camera model from file exif data."""
-    if mimeType == 'jpeg':
-        cmd = 'exiftool -s3 -Model ' + filename
-        args = shlex.split(cmd)
-        returnValue = subprocess.check_output(args, universal_newlines=True)
-        cameraModel = returnValue.rstrip()
-        return(cameraModel.replace(" ","_"))
-    else:
-        pass
+    cmd = 'exiftool -s3 -Model ' + filename
+    args = shlex.split(cmd)
+    returnValue = subprocess.check_output(args, universal_newlines=True)
+    cameraModel = returnValue.rstrip()
+    cameraModel = cameraModel.replace(" ","_")
+    if cameraModel == 'Canon_EOS_550D':
+        cameraModel = 'EOS550D'
+    return(cameraModel)
 
 def getCreationDate(filename, mimeType):
     """Get unix timestamp creation date."""
     cmd = 'exiftool -s3 -CreateDate ' + filename
     args = shlex.split(cmd)
     returnValue = subprocess.check_output(args, universal_newlines=True)
+    if ':' not in returnValue:
+        cmd = 'exiftool -s3 -DateTimeOriginal ' + filename
+        args = shlex.split(cmd)
+        returnValue = subprocess.check_output(args, universal_newlines=True)
+    if ':' not in returnValue:
+        returnValue = '99999999999999'
     createDate = returnValue.rstrip()
     createDate = createDate.replace(" ","")
     return(int(createDate.replace(":","")))
@@ -63,7 +73,7 @@ def baseN(num,b,numerals="ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
 
 def rotateImage(filename):
     """Rotate image if necessary"""
-    cmd = 'jhead -autorot ' + filename
+    cmd = 'jhead -autorot -se ' + filename
     args = shlex.split(cmd)
     returnValue = subprocess.check_output(args, universal_newlines=True)
     autorotResult = returnValue.rstrip()
@@ -86,6 +96,12 @@ def moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, ds
         dstDirectory = dstimgdir
     elif mimeType == 'quicktime':
         fileExtension = 'mov'
+        dstDirectory = dstviddir
+    elif mimeType == 'mp4':
+        fileExtension = 'mp4'
+        dstDirectory = dstviddir
+    elif mimeType == 'avi':
+        fileExtension = 'avi'
         dstDirectory = dstviddir
     else:
         return(1)
@@ -133,13 +149,16 @@ def main(argv):
     while True:
       try:
         filename = filequeue.popleft()
-        print('Processing ' + filename + ': ', end="")
-        print('mimeType: ', end="")
+        print('Processing ' + filename[:10] + ': ', end="")
+        print('\tmimeType: ', end="")
         mimeType = getMimeType(filename)
         print(mimeType, end="")
         logging.info(mimeType)
-        print('created: ', end="")
+        print('\tcreated: ', end="")
         creationTimestamp = getCreationDate(filename, mimeType)
+        if creationTimestamp == '99999999999999':
+            print('unknown createDate. ERROR.')
+            continue
         print(creationTimestamp, end="")
         logging.info(creationTimestamp)
         # we don't need the 1st character
@@ -148,21 +167,21 @@ def main(argv):
         # for images only
         cameraModel = ''
         if mimeType == 'jpeg':
-            print('cameraModel: ', end="")
+            print('\tcameraModel: ', end="")
             cameraModel = getCameraModel(filename, mimeType)
             print(cameraModel, end="")
             logging.info(cameraModel)
-            print('rotating: ', end="")
+            print('\trotating.', end="")
             rotateAction = rotateImage(filename)
             logging.info(rotateAction)
         
-        print('setPermissions. ', end="")
+        print(' setPermissions. ', end="")
         setFileMode(filename, 0o660)
         print('setTime. ', end="")
         setModifyDate(filename, creationTimestamp)
         print('moveRename. ', end="")
         moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
-        print('OK')
+        print('OK.')
         #logging.info(moveFileResult)
       except IndexError:
         break
