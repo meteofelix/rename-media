@@ -26,8 +26,9 @@ def checkdir(path):
         sys.exit(2)
 def getMimeType(filename):
     """Get mimetype of file"""
-    cmd = 'file -i -b ' + filename
+    cmd = 'file -i -b'
     args = shlex.split(cmd)
+    args.append((filename))
     returnValue = subprocess.check_output(args, universal_newlines=True)
     mimeType = returnValue.rstrip()
     if 'jpeg' in mimeType:
@@ -44,8 +45,9 @@ def getMimeType(filename):
 
 def getCameraModel(filename, mimeType):
     """Get camera model from file exif data."""
-    cmd = 'exiftool -s3 -Model ' + filename
+    cmd = 'exiftool -s3 -Model'
     args = shlex.split(cmd)
+    args.append((filename))
     returnValue = subprocess.check_output(args, universal_newlines=True)
     cameraModel = returnValue.rstrip()
     cameraModel = cameraModel.replace(" ","_")
@@ -55,15 +57,25 @@ def getCameraModel(filename, mimeType):
 
 def getCreationDate(filename, mimeType):
     """Get unix timestamp creation date."""
-    cmd = 'exiftool -s3 -CreateDate ' + filename
+    cmd = 'exiftool -s3 -CreateDate'
     args = shlex.split(cmd)
+    args.append((filename))
     returnValue = subprocess.check_output(args, universal_newlines=True)
+    # in case the year is before 2000
+    if returnValue[:2] == '19':
+        returnValue = '9999'
     if ':' not in returnValue:
         cmd = 'exiftool -s3 -DateTimeOriginal ' + filename
         args = shlex.split(cmd)
         returnValue = subprocess.check_output(args, universal_newlines=True)
+        # in case the year is before 2000
+        if returnValue[:2] == '19':
+            returnValue = '9999'
     if ':' not in returnValue:
-        returnValue = '99999999999999'
+        # in case the year is before 2000
+        if returnValue[:2] == '19':
+            returnValue = '9999'
+        returnValue = '9999'
     createDate = returnValue.rstrip()
     createDate = createDate.replace(" ","")
     return(int(createDate.replace(":","")))
@@ -73,8 +85,9 @@ def baseN(num,b,numerals="ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
 
 def rotateImage(filename):
     """Rotate image if necessary"""
-    cmd = 'jhead -autorot -se ' + filename
+    cmd = 'jhead -autorot -se'
     args = shlex.split(cmd)
+    args.append((filename))
     returnValue = subprocess.check_output(args, universal_newlines=True)
     autorotResult = returnValue.rstrip()
     return(autorotResult)
@@ -119,6 +132,10 @@ def main(argv):
     srcdir = ''
     dstimgdir = ''
     dstviddir = ''
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
     try:
       opts, args = getopt.getopt(argv,"hs:i:v:",["srcdir=","dstimgdir=","dstviddir="])
     except getopt.GetoptError:
@@ -156,8 +173,8 @@ def main(argv):
         logging.info(mimeType)
         print('\tcreated: ', end="")
         creationTimestamp = getCreationDate(filename, mimeType)
-        if creationTimestamp == '99999999999999':
-            print('unknown createDate. ERROR.')
+        if creationTimestamp == 9999:
+            print('unknown createDate. ' + FAIL + 'ERROR.' + ENDC)
             continue
         print(creationTimestamp, end="")
         logging.info(creationTimestamp)
@@ -181,7 +198,7 @@ def main(argv):
         setModifyDate(filename, creationTimestamp)
         print('moveRename. ', end="")
         moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
-        print('OK.')
+        print(OKGREEN + 'OK.' + ENDC)
         #logging.info(moveFileResult)
       except IndexError:
         break
