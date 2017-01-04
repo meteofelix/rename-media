@@ -9,9 +9,8 @@ import shlex
 import time
 from collections import deque
 
-# TODO: check if user has root permissions
 # TODO: don't overwrite target
-# TODO: check necessary binaries
+# TODO: print summary
 
 def checkdir(path):
     """Check if string is existing path."""
@@ -136,6 +135,24 @@ def main(argv):
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
+    uid = os.getuid()
+    # check for root permissions
+    if uid != 0:
+        print('You need root permissions to run that script.')
+        sys.exit(2)
+    # check necessary binaries
+    fileBinary = '/usr/bin/file'
+    exiftoolBinary = '/usr/bin/exiftool'
+    jheadBinary = '/usr/bin/jhead'
+    if not os.path.isfile(fileBinary):
+        print('Missing file binary.')
+        sys.exit(2)
+    if not os.path.isfile(exiftoolBinary):
+        print('Missing exiftool binary.')
+        sys.exit(2)
+    if not os.path.isfile(jheadBinary):
+        print('Missing jhead binary.')
+        sys.exit(2)
     try:
       opts, args = getopt.getopt(argv,"hs:i:v:",["srcdir=","dstimgdir=","dstviddir="])
     except getopt.GetoptError:
