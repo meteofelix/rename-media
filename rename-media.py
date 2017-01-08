@@ -8,9 +8,7 @@ import subprocess
 import shlex
 import time
 from collections import deque
-
-# TODO: don't overwrite target
-# TODO: print summary
+from pathlib import Path
 
 def checkdir(path):
     """Check if string is existing path."""
@@ -52,43 +50,72 @@ def getCameraModel(filename, mimeType):
     cameraModel = cameraModel.replace(" ","_")
     if cameraModel == 'Canon_EOS_550D':
         cameraModel = 'EOS550D'
+    if cameraModel == 'NIKON_D3200':
+        cameraModel = 'NIK_D3200'
+    if cameraModel == 'Canon_EOS_400D_DIGITAL':
+        cameraModel = 'EOS400D'
+    if cameraModel == 'Canon_IXUS_220HS':
+        cameraModel = 'IXUS220HS'
+    if len(cameraModel) > 9:
+        print('Camera model string too long.')
+        sys.exit(2)
     return(cameraModel)
 
 def getCreationDate(filename, mimeType):
     """Get unix timestamp creation date."""
+    returnValue = '9999'
     cmd = 'exiftool -s3 -CreateDate'
     args = shlex.split(cmd)
     args.append((filename))
-    returnValue = subprocess.check_output(args, universal_newlines=True)
+    createDate = subprocess.check_output(args, universal_newlines=True)
+    cmd = 'exiftool -s3 -DateTimeOriginal'
+    args = shlex.split(cmd)
+    args.append((filename))
+    dateTimeOriginal = subprocess.check_output(args, universal_newlines=True)
+    try:
+        if isinstance(createDate,str) and isinstance(dateTimeOrignal,str):
+            if createDate != dateTimeOriginal:
+                print('createDate not equal to dateTimeOriginal')
+                returnValue = '9999'
+            else:
+                returnValue = createDate
+    except NameError:
+        pass
+    if createDate:
+        returnValue = createDate
+    if dateTimeOriginal:
+        returnValue = dateTimeOriginal
+    if ':' not in returnValue:
+        returnValue = '9999'
     # in case the year is before 2000
     if returnValue[:2] == '19':
         returnValue = '9999'
-    if ':' not in returnValue:
-        cmd = 'exiftool -s3 -DateTimeOriginal ' + filename
-        args = shlex.split(cmd)
-        returnValue = subprocess.check_output(args, universal_newlines=True)
-        # in case the year is before 2000
-        if returnValue[:2] == '19':
-            returnValue = '9999'
-    if ':' not in returnValue:
-        # in case the year is before 2000
-        if returnValue[:2] == '19':
-            returnValue = '9999'
-        returnValue = '9999'
-    createDate = returnValue.rstrip()
-    createDate = createDate.replace(" ","")
-    return(int(createDate.replace(":","")))
+    creationDate = returnValue.rstrip()
+    creationDate = creationDate.replace(" ","")
+    return(int(creationDate.replace(":","")))
 
 def baseN(num,b,numerals="ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
     return ((num == 0) and numerals[0]) or (baseN(num // b, b, numerals).lstrip(numerals[0]) + numerals[num % b])
 
 def rotateImage(filename):
     """Rotate image if necessary"""
-    cmd = 'jhead -autorot -se'
+    autorotResult = ''
+    cmd = 'exiftool -s3 -m -Orientation'
     args = shlex.split(cmd)
     args.append((filename))
     returnValue = subprocess.check_output(args, universal_newlines=True)
-    autorotResult = returnValue.rstrip()
+    orientationTagValue = returnValue.rstrip()
+    if orientationTagValue:
+        # save owner and group
+        uid = os.stat(filename).st_uid
+        gid = os.stat(filename).st_gid
+        cmd = 'jhead -autorot'
+        args = shlex.split(cmd)
+        args.append((filename))
+        returnValue = subprocess.check_output(args, universal_newlines=True)
+        autorotResult = returnValue.rstrip()
+        # set owner and group
+        os.chown(filename, uid, gid)
     return(autorotResult)
 
 
@@ -123,8 +150,13 @@ def moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, ds
     else:
         cameraModelString = ''
 
-    newFilename = dstDirectory + dateString + cameraModelString + '.' + fileExtension
-    os.rename(filename, newFilename)
+    newFilename = dstDirectory + '/' + dateString + cameraModelString + '.' + fileExtension
+    if os.path.isfile(newFilename):
+        print('Target already exists.', end="")
+        return(0)
+    else:
+        os.rename(filename, newFilename)
+        return(1)
 
 def main(argv):
     """Main entry point for the script."""
@@ -135,6 +167,9 @@ def main(argv):
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
+    countImagesProcessed = 0
+    countVideosProcessed = 0
+    countUnableToProcess = 0
     uid = os.getuid()
     # check for root permissions
     if uid != 0:
@@ -170,11 +205,14 @@ def main(argv):
          dstviddir = arg
     # check directories
     checkdir(srcdir)
+    srcdir = str(Path(srcdir).resolve())
     checkdir(dstimgdir)
+    dstimgdir = str(Path(dstimgdir).resolve())
     checkdir(dstviddir)
-    print('Quelle: ', srcdir)
-    print('Ziel: ', dstimgdir)
-    print('Ziel: ', dstviddir)
+    dstviddir = str(Path(dstviddir).resolve())
+    print('Quelle    : ', srcdir)
+    print('BilderZiel: ', dstimgdir)
+    print('VideoZiel : ', dstviddir)
 
     os.chdir(srcdir)
     # for each file
@@ -192,6 +230,7 @@ def main(argv):
         creationTimestamp = getCreationDate(filename, mimeType)
         if creationTimestamp == 9999:
             print('unknown createDate. ' + FAIL + 'ERROR.' + ENDC)
+            countUnableToProcess += 1
             continue
         print(creationTimestamp, end="")
         logging.info(creationTimestamp)
@@ -214,11 +253,19 @@ def main(argv):
         print('setTime. ', end="")
         setModifyDate(filename, creationTimestamp)
         print('moveRename. ', end="")
-        moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
+        moveAndRenameFileResult = moveAndRenameFile(filename, dateString, mimeType, cameraModel, dstimgdir, dstviddir)
+        if not moveAndRenameFileResult:
+            print(FAIL + 'ERROR.' + ENDC)
+            countUnableToProcess += 1
+            continue
         print(OKGREEN + 'OK.' + ENDC)
+        if mimeType == 'jpeg':
+            countImagesProcessed += 1
+        if mimeType in ('quicktime', 'mp4', 'avi'):
+            countVideosProcessed += 1
         #logging.info(moveFileResult)
       except IndexError:
         break
-
+    print('Done renaming ' + str(countImagesProcessed) + ' images and ' + str(countVideosProcessed) + ' videos. ' + str(countUnableToProcess) + ' files could not be renamed.')
 if __name__ == '__main__':
     main(sys.argv[1:])
